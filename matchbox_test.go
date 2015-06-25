@@ -121,6 +121,33 @@ func TestMatchbox(t *testing.T) {
 	assert.Equal([]Subscriber{}, mb.Subscribers("x.a.a.a.y"))
 }
 
+// Mimic problem that Tom Deering is experiencing
+func TestInternalPoundSubscriber(t *testing.T) {
+	assert := assert.New(t)
+
+	// Works for Tom
+	//mb := New(NewAMQPConfig())
+	//sub1 := subscriber("Subcriber1")
+	//mb.Subscribe("*.b.#", sub1)
+	//sub2 := subscriber("Subscriber2")
+	//mb.Subscribe("*.b.*.d", sub2)
+	//subscribers := mb.Subscribers("a.b.c.d")
+	//sessions := []Subscriber{sub1, sub2}
+	//assert.Len(subscribers, 2)
+	//for _, subscriber := range subscribers {
+	//	assert.Contains(sessions, subscriber)
+	//}
+
+	// Does not work for Tom. He observed that sub1 does not seem to receive
+	// messages in this situation
+	mb := New(NewAMQPConfig())
+	sub1 := subscriber("Subcriber1")
+	mb.Subscribe("*.b.#", sub1)
+	sub2 := subscriber("Subscriber2")
+	mb.Subscribe("*.b.#.d", sub2)
+	assert.Equal([]Subscriber{sub2, sub1}, mb.Subscribers("a.b.c.d"))
+}
+
 func TestConfig(t *testing.T) {
 	assert := assert.New(t)
 	mb := New(&Config{Delimiter: "|", SingleWildcard: "$", ZeroOrMoreWildcard: "%"})
