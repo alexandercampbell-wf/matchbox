@@ -499,22 +499,38 @@ func (c *ctrie) bLookup(i, parent *iNode, main *mainNode, b *branch, keys []stri
 	if len(keys) > 1 {
 		// If more than 1 key is present in the path, the tree must be
 		// traversed deeper.
+		var (
+			subscribers []Subscriber
+			ok          bool
+		)
 		if b.iNode == nil {
 			if zeroOrMore {
 				// Loopback on zero-or-more wildcard.
-				return c.bLookup(i, parent, main, b, keys[1:], true, startGen)
+				subscribers, ok = c.bLookup(i, parent, main, b, keys[1:], true, startGen)
+				goto ret
 			}
 			// If the branch doesn't point to an I-node, no subscribers
 			// exist.
-			return nil, true
+			subscribers = make([]Subscriber, 0)
+			ok = true
+			goto ret
 		}
 		// If the branch has an I-node, ilookup is called recursively.
 		if c.readOnly || startGen == b.iNode.gen {
-			return c.ilookup(b.iNode, keys[1:], i, zeroOrMore, startGen)
+			subscribers, ok = c.ilookup(b.iNode, keys[1:], i, zeroOrMore, startGen)
+			goto ret
 		}
 		if gcas(i, main, &mainNode{cNode: main.cNode.renewed(startGen, c)}, c) {
-			return c.ilookup(i, keys, parent, zeroOrMore, startGen)
+			subscribers, ok = c.ilookup(i, keys, parent, zeroOrMore, startGen)
+			goto ret
 		}
+
+	ret:
+		if ok && zeroOrMore {
+			// Include non-leaf, zero-or-more wildcard subscribers.
+			subscribers = append(subscribers, b.subscribers()...)
+		}
+		return subscribers, ok
 	}
 
 	// Retrieve the subscribers from the branch.
