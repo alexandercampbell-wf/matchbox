@@ -33,11 +33,11 @@ func (m subscriber) ID() string {
 func TestMatchbox(t *testing.T) {
 	assert := assert.New(t)
 	mb := New(NewAMQPConfig())
-	sub1 := subscriber("abc")
-	sub2 := subscriber("def")
-	sub3 := subscriber("ghi")
-	sub4 := subscriber("jkl")
-	sub5 := subscriber("mno")
+	sub1 := subscriber("sub1")
+	sub2 := subscriber("sub2")
+	sub3 := subscriber("sub3")
+	sub4 := subscriber("sub4")
+	sub5 := subscriber("sub5")
 
 	assert.Equal([]Subscriber{}, mb.Subscribers("foo"))
 	mb.Unsubscribe("moo", sub1)
@@ -95,11 +95,13 @@ func TestMatchbox(t *testing.T) {
 	mb.Unsubscribe("a.b.b.c", sub2)
 	mb.Unsubscribe("a.b.b.c", sub2)
 	assert.Equal([]Subscriber{sub3}, mb.Subscribers("a.b.b.c"))
+	mb.Unsubscribe("a.*.*.c", sub3)
 
 	mb.Subscribe("d.#.f", sub1)
 	assert.Equal([]Subscriber{sub1}, mb.Subscribers("d.f"))
 	assert.Equal([]Subscriber{sub1}, mb.Subscribers("d.e.f"))
 	assert.Equal([]Subscriber{sub1}, mb.Subscribers("d.e.e.e.e.e.f"))
+	mb.Unsubscribe("d.#.f", sub1)
 
 	mb.Subscribe("x.#", sub3)
 	assert.Equal([]Subscriber{sub3}, mb.Subscribers("x"))
@@ -110,6 +112,7 @@ func TestMatchbox(t *testing.T) {
 		assert.Contains(sessions, subscriber)
 	}
 	assert.Equal([]Subscriber{sub3}, mb.Subscribers("x.y.z.z.z.z.z.z.z"))
+	mb.Unsubscribe("x.#", sub3)
 
 	mb.Subscribe("x.#.#.#.y.z", sub4)
 	assert.Equal([]Subscriber{sub4}, mb.Subscribers("x.a.y.z"))
@@ -119,6 +122,34 @@ func TestMatchbox(t *testing.T) {
 	assert.Equal([]Subscriber{}, mb.Subscribers("x.a.y.z"))
 	assert.Equal([]Subscriber{}, mb.Subscribers("x.a.a.a.y.z"))
 	assert.Equal([]Subscriber{}, mb.Subscribers("x.a.a.a.y"))
+}
+
+func TestInternalPoundSubscriber(t *testing.T) {
+	assert := assert.New(t)
+
+	mb := New(NewAMQPConfig())
+	sub1 := subscriber("Subcriber1")
+	mb.Subscribe("*.b.#", sub1)
+	sub2 := subscriber("Subscriber2")
+	mb.Subscribe("*.b.*.d", sub2)
+	subscribers := mb.Subscribers("a.b.c.d")
+	sessions := []Subscriber{sub1, sub2}
+	assert.Len(subscribers, 2)
+	for _, subscriber := range subscribers {
+		assert.Contains(sessions, subscriber)
+	}
+
+	mb = New(NewAMQPConfig())
+	sub1 = subscriber("Subcriber1")
+	mb.Subscribe("*.b.#", sub1)
+	sub2 = subscriber("Subscriber2")
+	mb.Subscribe("*.b.#.d", sub2)
+	sessions = []Subscriber{sub1, sub2}
+	subscribers = mb.Subscribers("a.b.c.d")
+	assert.Len(subscribers, 2)
+	for _, subscriber := range subscribers {
+		assert.Contains(sessions, subscriber)
+	}
 }
 
 func TestConfig(t *testing.T) {
