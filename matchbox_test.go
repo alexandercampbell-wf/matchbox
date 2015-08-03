@@ -152,6 +152,22 @@ func TestInternalPoundSubscriber(t *testing.T) {
 	}
 }
 
+func TestChildParentSubscriber(t *testing.T) {
+	assert := assert.New(t)
+	mb := New(NewAMQPConfig())
+	sub1 := subscriber("sub1")
+	sub2 := subscriber("sub2")
+	sub3 := subscriber("sub3")
+
+	mb.Subscribe("foo.bar.baz.qux.1", sub1)
+	mb.Subscribe("foo.bar.baz.qux.2", sub2)
+	mb.Subscribe("foo.bar.baz.qux", sub3)
+
+	assert.Equal([]Subscriber{sub1}, mb.Subscribers("foo.bar.baz.qux.1"))
+	assert.Equal([]Subscriber{sub2}, mb.Subscribers("foo.bar.baz.qux.2"))
+	assert.Equal([]Subscriber{sub3}, mb.Subscribers("foo.bar.baz.qux"))
+}
+
 func TestConfig(t *testing.T) {
 	assert := assert.New(t)
 	mb := New(&Config{Delimiter: "|", SingleWildcard: "$", ZeroOrMoreWildcard: "%"})
