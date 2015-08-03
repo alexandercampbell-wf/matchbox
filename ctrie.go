@@ -135,6 +135,7 @@ func (c *cNode) updated(key string, sub Subscriber, gen *generation) *cNode {
 		for id, sub := range br.subs {
 			newBranch.subs[id] = sub
 		}
+		newBranch.iNode = br.iNode
 	}
 	branches[key] = newBranch
 	return &cNode{branches: branches, gen: gen}
