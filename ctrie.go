@@ -270,7 +270,7 @@ func (c *ctrie) Remove(topic string, sub Subscriber) {
 	keys = c.config.reduceZeroOrMoreWildcards(keys)
 	rootPtr := (*unsafe.Pointer)(unsafe.Pointer(&c.root))
 	root := (*iNode)(atomic.LoadPointer(rootPtr))
-	if !c.iremove(root, keys, sub, nil, root.gen) {
+	if !c.iremove(root, keys, 0, sub, nil, root.gen) {
 		c.Remove(topic, sub)
 	}
 }
@@ -373,31 +373,31 @@ func (c *ctrie) iinsert(i *iNode, keys []string, sub Subscriber, parent *iNode, 
 // iremove attempts to remove the Subscriber from the key path. True is
 // returned if the Subscriber was removed (or didn't exist), false if the
 // operation needs to be retried.
-func (c *ctrie) iremove(i *iNode, keys []string, sub Subscriber, parent *iNode, startGen *generation) bool {
+func (c *ctrie) iremove(i *iNode, keys []string, keyIdx int, sub Subscriber, parent *iNode, startGen *generation) bool {
 	// Linearization point.
 	mainPtr := (*unsafe.Pointer)(unsafe.Pointer(&i.main))
 	main := (*mainNode)(atomic.LoadPointer(mainPtr))
 	switch {
 	case main.cNode != nil:
 		cn := main.cNode
-		if br := cn.getBranch(keys[0]); br == nil {
+		if br := cn.getBranch(keys[keyIdx]); br == nil {
 			// If the relevant key is not in the map, the subscription doesn't
 			// exist.
 			return true
 		} else {
 			// If the relevant key is present in the map, its corresponding
 			// branch is read.
-			if len(keys) > 1 {
+			if keyIdx+1 < len(keys) {
 				// If more than 1 key is present in the path, the tree must be
 				// traversed deeper.
 				if br.iNode != nil {
 					// If the branch has an I-node, iremove is called
 					// recursively.
 					if c.readOnly || startGen == br.iNode.gen {
-						return c.iremove(br.iNode, keys[1:], sub, i, startGen)
+						return c.iremove(br.iNode, keys, keyIdx+1, sub, i, startGen)
 					}
 					if gcas(i, main, &mainNode{cNode: cn.renewed(startGen, c)}, c) {
-						return c.iremove(i, keys, sub, parent, startGen)
+						return c.iremove(i, keys, keyIdx, sub, parent, startGen)
 					}
 				}
 				// Otherwise, the subscription doesn't exist.
@@ -411,13 +411,13 @@ func (c *ctrie) iremove(i *iNode, keys []string, sub Subscriber, parent *iNode, 
 			// contraction of the copy is then created. A successful CAS will
 			// substitute the old C-node with the copied C-node, thus removing
 			// the Subscriber from the trie - this is the linearization point.
-			ncn := cn.removed(keys[0], sub, i.gen)
+			ncn := cn.removed(keys[keyIdx], sub, i.gen)
 			cntr := c.toContracted(ncn, i)
 			if gcas(i, main, cntr, c) {
 				if parent != nil {
 					main = gcasRead(i, c)
 					if main.tNode != nil {
-						cleanParent(parent, i, c, keys[0], startGen)
+						cleanParent(parent, i, c, keys[keyIdx-1], startGen)
 					}
 				}
 				return true
