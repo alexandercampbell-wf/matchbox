@@ -657,13 +657,18 @@ func contract(parentsParent, parent, i *iNode, c *ctrie, pMain *mainNode, startG
 				}
 				// Replace the main node of the parent's parent.
 				ncn := &mainNode{cNode: updated}
-				return gcas(parentsParent, ppMain, ncn, c) && c.readRoot().gen == startGen
+				if !gcas(parentsParent, ppMain, ncn, c) && c.readRoot().gen == startGen {
+					return false
+				}
+				return true
 			}
 		}
 	} else {
 		// Otherwise, perform a simple contraction to a T-node.
 		cntr := c.toContracted(ncn.cNode, parent)
-		return gcas(parent, pMain, cntr, c) && c.readRoot().gen == startGen
+		if !gcas(parent, pMain, cntr, c) && c.readRoot().gen == startGen {
+			return false
+		}
 	}
 	return true
 }
