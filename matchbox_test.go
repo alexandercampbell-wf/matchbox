@@ -106,7 +106,6 @@ func TestMatchbox(t *testing.T) {
 	mb.Unsubscribe("a.*.c", sub2)
 	sessions = []Subscriber{sub3, sub4}
 	subscribers = mb.Subscribers("a.b.c")
-	println("finish")
 	assert.Len(subscribers, 2)
 	for _, subscriber := range subscribers {
 		assert.Contains(sessions, subscriber)
