@@ -270,7 +270,7 @@ func (c *ctrie) Remove(topic string, sub Subscriber) {
 	keys = c.config.reduceZeroOrMoreWildcards(keys)
 	rootPtr := (*unsafe.Pointer)(unsafe.Pointer(&c.root))
 	root := (*iNode)(atomic.LoadPointer(rootPtr))
-	if !c.iremove(root, keys, 0, sub, nil, root.gen) {
+	if !c.iremove(root, keys, 0, sub, nil, nil, root.gen) {
 		c.Remove(topic, sub)
 	}
 }
@@ -373,7 +373,9 @@ func (c *ctrie) iinsert(i *iNode, keys []string, sub Subscriber, parent *iNode, 
 // iremove attempts to remove the Subscriber from the key path. True is
 // returned if the Subscriber was removed (or didn't exist), false if the
 // operation needs to be retried.
-func (c *ctrie) iremove(i *iNode, keys []string, keyIdx int, sub Subscriber, parent *iNode, startGen *generation) bool {
+func (c *ctrie) iremove(i *iNode, keys []string, keyIdx int, sub Subscriber,
+	parentsParent, parent *iNode, startGen *generation) bool {
+
 	// Linearization point.
 	mainPtr := (*unsafe.Pointer)(unsafe.Pointer(&i.main))
 	main := (*mainNode)(atomic.LoadPointer(mainPtr))
@@ -394,10 +396,10 @@ func (c *ctrie) iremove(i *iNode, keys []string, keyIdx int, sub Subscriber, par
 					// If the branch has an I-node, iremove is called
 					// recursively.
 					if c.readOnly || startGen == br.iNode.gen {
-						return c.iremove(br.iNode, keys, keyIdx+1, sub, i, startGen)
+						return c.iremove(br.iNode, keys, keyIdx+1, sub, parent, i, startGen)
 					}
 					if gcas(i, main, &mainNode{cNode: cn.renewed(startGen, c)}, c) {
-						return c.iremove(i, keys, keyIdx, sub, parent, startGen)
+						return c.iremove(i, keys, keyIdx, sub, parentsParent, parent, startGen)
 					}
 				}
 				// Otherwise, the subscription doesn't exist.
@@ -417,7 +419,7 @@ func (c *ctrie) iremove(i *iNode, keys []string, keyIdx int, sub Subscriber, par
 				if parent != nil {
 					main = gcasRead(i, c)
 					if main.tNode != nil {
-						cleanParent(parent, i, c, keys[keyIdx-1], startGen)
+						cleanParent(parentsParent, parent, i, c, keys[keyIdx-1], startGen)
 					}
 				}
 				return true
@@ -612,7 +614,7 @@ func clean(i *iNode) {
 // I-node i and checks if the T-node below i is reachable from p. If i is no
 // longer reachable, some other thread has already completed the contraction.
 // If it is reachable, the C-node below p is replaced with its contraction.
-func cleanParent(parent, i *iNode, c *ctrie, key string, startGen *generation) {
+func cleanParent(parentsParent, parent, i *iNode, c *ctrie, key string, startGen *generation) {
 	var (
 		mainPtr  = (*unsafe.Pointer)(unsafe.Pointer(&i.main))
 		main     = (*mainNode)(atomic.LoadPointer(mainPtr))
@@ -625,14 +627,45 @@ func cleanParent(parent, i *iNode, c *ctrie, key string, startGen *generation) {
 				return
 			}
 			if main.tNode != nil {
-				ncn := toCompressed(pMain.cNode)
-				if !gcas(parent, pMain, c.toContracted(ncn.cNode, parent), c) &&
-					c.readRoot().gen == startGen {
-					cleanParent(parent, i, c, key, startGen)
+				if !contract(parentsParent, parent, i, c, pMain, startGen) {
+					cleanParent(parentsParent, parent, i, c, key, startGen)
 				}
 			}
 		}
 	}
+}
+
+// contract performs a contraction of the parent's C-node if possible. Returns
+// true if the contraction succeeded, false if it needs to be retried.
+func contract(parentsParent, parent, i *iNode, c *ctrie, pMain *mainNode, startGen *generation) bool {
+	ncn := toCompressed(pMain.cNode)
+	if len(ncn.cNode.branches) == 0 && parentsParent != nil {
+		// If the compressed C-node has no branches, it and the I-node above it
+		// should be removed. To do this, a CAS must occur on the parent I-node
+		// of the parent to update the respective branch of the C-node below it
+		// to point to nil.
+		ppMainPtr := (*unsafe.Pointer)(unsafe.Pointer(&parentsParent.main))
+		ppMain := (*mainNode)(atomic.LoadPointer(ppMainPtr))
+		for pKey, pBranch := range ppMain.cNode.branches {
+			// Find the branch pointing to the parent.
+			if pBranch.iNode == parent {
+				// Update the branch to point to nil.
+				updated := ppMain.cNode.updatedBranch(pKey, nil, pBranch, i.gen)
+				if len(pBranch.subs) == 0 {
+					// If the branch has no subscribers, simply prune it.
+					delete(updated.branches, pKey)
+				}
+				// Replace the main node of the parent's parent.
+				ncn := &mainNode{cNode: updated}
+				return !gcas(parentsParent, ppMain, ncn, c) && c.readRoot().gen == startGen
+			}
+		}
+	} else {
+		// Otherwise, perform a simple contraction to a T-node.
+		cntr := c.toContracted(ncn.cNode, parent)
+		return gcas(parent, pMain, cntr, c) && c.readRoot().gen == startGen
+	}
+	return true
 }
 
 // toCompressed prunes any branches to tombed I-nodes and returns the
