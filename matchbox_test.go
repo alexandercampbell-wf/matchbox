@@ -224,6 +224,17 @@ func TestChildParentSubscriber(t *testing.T) {
 	assert.Equal([]Subscriber{sub3}, mb.Subscribers("foo.bar.baz.qux"))
 }
 
+func TestAlreadySubscribed(t *testing.T) {
+	assert := assert.New(t)
+	mb := New(NewAMQPConfig())
+	sub1 := subscriber("sub1")
+
+	mb.Subscribe("foo", sub1)
+	assert.Equal([]Subscriber{sub1}, mb.Subscribers("foo"))
+	mb.Subscribe("foo", sub1)
+	assert.Equal([]Subscriber{sub1}, mb.Subscribers("foo"))
+}
+
 func TestConfig(t *testing.T) {
 	assert := assert.New(t)
 	mb := New(&Config{Delimiter: "|", SingleWildcard: "$", ZeroOrMoreWildcard: "%"})
