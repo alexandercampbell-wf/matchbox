@@ -657,7 +657,7 @@ func contract(parentsParent, parent, i *iNode, c *ctrie, pMain *mainNode, startG
 				}
 				// Replace the main node of the parent's parent.
 				ncn := &mainNode{cNode: updated}
-				return !gcas(parentsParent, ppMain, ncn, c) && c.readRoot().gen == startGen
+				return gcas(parentsParent, ppMain, ncn, c) && c.readRoot().gen == startGen
 			}
 		}
 	} else {
