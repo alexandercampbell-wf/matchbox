@@ -47,6 +47,29 @@ func TestBasic(t *testing.T) {
 	assert.Equal([]Subscriber{sub3}, mb.Subscribers("foo.bar.baz.blah"))
 }
 
+func TestSingleNode(t *testing.T) {
+	assert := assert.New(t)
+	mb := New(NewAMQPConfig())
+	sub1 := subscriber("sub1")
+	sub2 := subscriber("sub2")
+
+	mb.Subscribe("a", sub1)
+	assert.Equal([]Subscriber{sub1}, mb.Subscribers("a"))
+	mb.Unsubscribe("a", sub1)
+	assert.Equal([]Subscriber{}, mb.Subscribers("a"))
+
+	mb.Subscribe("a", sub2)
+	assert.Equal([]Subscriber{sub2}, mb.Subscribers("a"))
+	mb.Subscribe("b", sub1)
+	assert.Equal([]Subscriber{sub1}, mb.Subscribers("b"))
+	mb.Unsubscribe("a", sub2)
+	assert.Equal([]Subscriber{}, mb.Subscribers("a"))
+	assert.Equal([]Subscriber{sub1}, mb.Subscribers("b"))
+	mb.Unsubscribe("b", sub1)
+	assert.Equal([]Subscriber{}, mb.Subscribers("a"))
+	assert.Equal([]Subscriber{}, mb.Subscribers("b"))
+}
+
 func TestContraction(t *testing.T) {
 	assert := assert.New(t)
 	mb := New(NewAMQPConfig())
