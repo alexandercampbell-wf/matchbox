@@ -30,6 +30,62 @@ func (m subscriber) ID() string {
 	return string(m)
 }
 
+func TestBasic(t *testing.T) {
+	assert := assert.New(t)
+	mb := New(NewAMQPConfig())
+	sub1 := subscriber("sub1")
+	sub2 := subscriber("sub2")
+	sub3 := subscriber("sub3")
+
+	mb.Subscribe("foo.bar.baz.qux", sub1)
+	mb.Unsubscribe("foo.bar.baz.qux", sub1)
+	mb.Subscribe("foo.bar.baz", sub2)
+	mb.Subscribe("foo.bar.baz.blah", sub3)
+
+	assert.Equal([]Subscriber{}, mb.Subscribers("foo.bar.baz.qux"))
+	assert.Equal([]Subscriber{sub2}, mb.Subscribers("foo.bar.baz"))
+	assert.Equal([]Subscriber{sub3}, mb.Subscribers("foo.bar.baz.blah"))
+}
+
+func TestSingleNode(t *testing.T) {
+	assert := assert.New(t)
+	mb := New(NewAMQPConfig())
+	sub1 := subscriber("sub1")
+	sub2 := subscriber("sub2")
+
+	mb.Subscribe("a", sub1)
+	assert.Equal([]Subscriber{sub1}, mb.Subscribers("a"))
+	mb.Unsubscribe("a", sub1)
+	assert.Equal([]Subscriber{}, mb.Subscribers("a"))
+
+	mb.Subscribe("a", sub2)
+	assert.Equal([]Subscriber{sub2}, mb.Subscribers("a"))
+	mb.Subscribe("b", sub1)
+	assert.Equal([]Subscriber{sub1}, mb.Subscribers("b"))
+	mb.Unsubscribe("a", sub2)
+	assert.Equal([]Subscriber{}, mb.Subscribers("a"))
+	assert.Equal([]Subscriber{sub1}, mb.Subscribers("b"))
+	mb.Unsubscribe("b", sub1)
+	assert.Equal([]Subscriber{}, mb.Subscribers("a"))
+	assert.Equal([]Subscriber{}, mb.Subscribers("b"))
+}
+
+func TestContraction(t *testing.T) {
+	assert := assert.New(t)
+	mb := New(NewAMQPConfig())
+	sub1 := subscriber("sub1")
+
+	mb.Subscribe("a", sub1)
+	assert.Equal([]Subscriber{sub1}, mb.Subscribers("a"))
+
+	mb.Subscribe("a.b.c", sub1)
+	assert.Equal([]Subscriber{sub1}, mb.Subscribers("a.b.c"))
+
+	mb.Unsubscribe("a.b.c", sub1)
+	assert.Equal([]Subscriber{}, mb.Subscribers("a.b.c"))
+	assert.Equal([]Subscriber{sub1}, mb.Subscribers("a"))
+}
+
 func TestMatchbox(t *testing.T) {
 	assert := assert.New(t)
 	mb := New(NewAMQPConfig())
@@ -166,6 +222,17 @@ func TestChildParentSubscriber(t *testing.T) {
 	assert.Equal([]Subscriber{sub1}, mb.Subscribers("foo.bar.baz.qux.1"))
 	assert.Equal([]Subscriber{sub2}, mb.Subscribers("foo.bar.baz.qux.2"))
 	assert.Equal([]Subscriber{sub3}, mb.Subscribers("foo.bar.baz.qux"))
+}
+
+func TestAlreadySubscribed(t *testing.T) {
+	assert := assert.New(t)
+	mb := New(NewAMQPConfig())
+	sub1 := subscriber("sub1")
+
+	mb.Subscribe("foo", sub1)
+	assert.Equal([]Subscriber{sub1}, mb.Subscribers("foo"))
+	mb.Subscribe("foo", sub1)
+	assert.Equal([]Subscriber{sub1}, mb.Subscribers("foo"))
 }
 
 func TestConfig(t *testing.T) {
